@@ -42,8 +42,17 @@ public actor RemindersStore {
   }
 
   public func lists() async -> [ReminderList] {
-    eventStore.calendars(for: .reminder).map { calendar in
-      ReminderList(id: calendar.calendarIdentifier, title: calendar.title)
+    let subtaskStore = SubtaskStore()
+    let sharingInfo = subtaskStore.fetchSharingInfo()
+    
+    return eventStore.calendars(for: .reminder).map { calendar in
+      let info = sharingInfo[calendar.calendarIdentifier]
+      return ReminderList(
+        id: calendar.calendarIdentifier,
+        title: calendar.title,
+        isShared: info?.isShared,
+        sharingStatus: info?.sharingStatus
+      )
     }
   }
 
@@ -51,7 +60,7 @@ public actor RemindersStore {
     eventStore.defaultCalendarForNewReminders()?.title
   }
 
-  public func reminders(in listName: String? = nil) async throws -> [ReminderItem] {
+  public func reminders(in listName: String? = nil, includeSubtasks: Bool = false) async throws -> [ReminderItem] {
     let calendars: [EKCalendar]
     if let listName {
       calendars = eventStore.calendars(for: .reminder).filter { $0.title == listName }
@@ -62,7 +71,47 @@ public actor RemindersStore {
       calendars = eventStore.calendars(for: .reminder)
     }
 
-    return await fetchReminders(in: calendars)
+    let items = await fetchReminders(in: calendars)
+    
+    if includeSubtasks {
+        let subtaskStore = SubtaskStore()
+        let subtaskInfo = subtaskStore.fetchSubtaskInfo()
+        
+        let enrichedItems = items.map { item -> ReminderItem in
+            var newItem = item
+            if let info = subtaskInfo[item.id] {
+                newItem.parentID = info.parentID
+                newItem.displayOrder = info.displayOrder
+            }
+            return newItem
+        }
+        
+        // Build the tree
+        var itemsByID = [String: ReminderItem]()
+        for item in enrichedItems {
+            itemsByID[item.id] = item
+        }
+        
+        var topLevelItems = [ReminderItem]()
+        for item in enrichedItems {
+            if let parentID = item.parentID, var parent = itemsByID[parentID] {
+                var subtasks = parent.subtasks ?? []
+                subtasks.append(item)
+                parent.subtasks = subtasks.sorted { ($0.displayOrder ?? 0) < ($1.displayOrder ?? 0) }
+                itemsByID[parentID] = parent
+            }
+        }
+        
+        for item in enrichedItems {
+            if item.parentID == nil {
+                topLevelItems.append(itemsByID[item.id]!)
+            }
+        }
+        
+        return topLevelItems
+    }
+    
+    return items
   }
 
   public func createList(name: String) async throws -> ReminderList {

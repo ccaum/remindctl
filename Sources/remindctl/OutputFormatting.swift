@@ -13,6 +13,8 @@ struct ListSummary: Codable, Sendable, Equatable {
   let title: String
   let reminderCount: Int
   let overdueCount: Int
+  let isShared: Bool?
+  let sharingStatus: Int?
 }
 
 struct AuthorizationSummary: Codable, Sendable, Equatable {
@@ -94,18 +96,42 @@ enum OutputRenderer {
       Swift.print("No reminders found")
       return
     }
-    for (index, reminder) in sorted.enumerated() {
-      let status = reminder.isCompleted ? "x" : " "
-      let due = reminder.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
-      let priority = reminder.priority == .none ? "" : " priority=\(reminder.priority.rawValue)"
-      Swift.print("[\(index + 1)] [\(status)] \(reminder.title) [\(reminder.listName)] — \(due)\(priority)")
+    
+    var index = 1
+    func printItem(_ item: ReminderItem, indent: Int = 0) {
+      let status = item.isCompleted ? "x" : " "
+      let due = item.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
+      let priority = item.priority == .none ? "" : " priority=\(item.priority.rawValue)"
+      let padding = String(repeating: " ", count: indent)
+      let listPart = indent == 0 ? " [\(item.listName)]" : ""
+      
+      Swift.print("\(padding)[\(index)] [\(status)] \(item.title)\(listPart) — \(due)\(priority)")
+      index += 1
+      
+      if let subtasks = item.subtasks {
+        for subtask in subtasks {
+          printItem(subtask, indent: indent + 5)
+        }
+      }
+    }
+    
+    for reminder in sorted {
+      printItem(reminder)
     }
   }
 
   private static func printRemindersPlain(_ reminders: [ReminderItem]) {
     let sorted = ReminderFiltering.sort(reminders)
-    for reminder in sorted {
-      Swift.print(plainLine(for: reminder))
+    func printItem(_ item: ReminderItem) {
+      Swift.print(plainLine(for: item))
+      if let subtasks = item.subtasks {
+        for subtask in subtasks {
+          printItem(subtask)
+        }
+      }
+    }
+    for item in sorted {
+      printItem(item)
     }
   }
 
@@ -117,6 +143,7 @@ enum OutputRenderer {
       reminder.isCompleted ? "1" : "0",
       reminder.priority.rawValue,
       due,
+      reminder.parentID ?? "",
       reminder.title,
     ].joined(separator: "\t")
   }

@@ -24,6 +24,13 @@ enum ShowCommand {
               help: "Limit to a specific list",
               parsing: .singleValue
             )
+          ],
+          flags: [
+            .make(
+              label: "subtasks",
+              names: [.short("s"), .long("subtasks")],
+              help: "Show subtasks nested under their parents"
+            )
           ]
         )
       ),
@@ -33,9 +40,11 @@ enum ShowCommand {
         "remindctl show overdue",
         "remindctl show 2026-01-04",
         "remindctl show --list Work",
+        "remindctl show --subtasks",
       ]
     ) { values, runtime in
       let listName = values.option("list")
+      let showSubtasks = values.flag("subtasks")
       let filterToken = values.argument(0)
 
       let filter: ReminderFilter
@@ -50,8 +59,16 @@ enum ShowCommand {
 
       let store = RemindersStore()
       try await store.requestAccess()
-      let reminders = try await store.reminders(in: listName)
-      let filtered = ReminderFiltering.apply(reminders, filter: filter)
+      let reminders = try await store.reminders(in: listName, includeSubtasks: showSubtasks)
+      
+      let filtered: [ReminderItem]
+      if showSubtasks {
+          // If showing subtasks, we only apply filter to top-level items
+          filtered = ReminderFiltering.apply(reminders, filter: filter)
+      } else {
+          filtered = ReminderFiltering.apply(reminders, filter: filter)
+      }
+      
       OutputRenderer.printReminders(filtered, format: runtime.outputFormat)
     }
   }

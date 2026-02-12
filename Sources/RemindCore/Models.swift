@@ -36,10 +36,14 @@ public enum ReminderPriority: String, Codable, CaseIterable, Sendable {
 public struct ReminderList: Identifiable, Codable, Sendable, Equatable {
   public let id: String
   public let title: String
+  public let isShared: Bool?
+  public let sharingStatus: Int?
 
-  public init(id: String, title: String) {
+  public init(id: String, title: String, isShared: Bool? = nil, sharingStatus: Int? = nil) {
     self.id = id
     self.title = title
+    self.isShared = isShared
+    self.sharingStatus = sharingStatus
   }
 }
 
@@ -53,6 +57,9 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
   public let dueDate: Date?
   public let listID: String
   public let listName: String
+  public var parentID: String?
+  public var subtasks: [ReminderItem]?
+  public var displayOrder: Int?
 
   public init(
     id: String,
@@ -63,7 +70,10 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
     priority: ReminderPriority,
     dueDate: Date?,
     listID: String,
-    listName: String
+    listName: String,
+    parentID: String? = nil,
+    subtasks: [ReminderItem]? = nil,
+    displayOrder: Int? = nil
   ) {
     self.id = id
     self.title = title
@@ -74,6 +84,9 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
     self.dueDate = dueDate
     self.listID = listID
     self.listName = listName
+    self.parentID = parentID
+    self.subtasks = subtasks
+    self.displayOrder = displayOrder
   }
 }
 
