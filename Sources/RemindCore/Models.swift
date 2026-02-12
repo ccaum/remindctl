@@ -36,10 +36,62 @@ public enum ReminderPriority: String, Codable, CaseIterable, Sendable {
 public struct ReminderList: Identifiable, Codable, Sendable, Equatable {
   public let id: String
   public let title: String
+  public let isShared: Bool
+  public let sharingStatus: Int
 
-  public init(id: String, title: String) {
+  public init(id: String, title: String, isShared: Bool = false, sharingStatus: Int = 0) {
     self.id = id
     self.title = title
+    self.isShared = isShared
+    self.sharingStatus = sharingStatus
+  }
+}
+
+public struct Sharee: Codable, Sendable, Equatable {
+  public let name: String?
+  public let email: String?
+  public let accessLevel: String // readOnly, readWrite, unknown
+  public let status: String // pending, accepted, declined, unknown
+
+  public init(name: String?, email: String?, accessLevel: String, status: String) {
+    self.name = name
+    self.email = email
+    self.accessLevel = accessLevel
+    self.status = status
+  }
+}
+
+public struct ReminderListSharingInfo: Codable, Sendable, Equatable {
+  public let listID: String
+  public let listName: String
+  public let isShared: Bool
+  public let sharingStatus: Int
+  public let isOwner: Bool
+  public let canBeShared: Bool
+  public let ownerName: String?
+  public let ownerEmail: String?
+  public let sharees: [Sharee]?
+
+  public init(
+    listID: String,
+    listName: String,
+    isShared: Bool,
+    sharingStatus: Int,
+    isOwner: Bool,
+    canBeShared: Bool,
+    ownerName: String? = nil,
+    ownerEmail: String? = nil,
+    sharees: [Sharee]? = nil
+  ) {
+    self.listID = listID
+    self.listName = listName
+    self.isShared = isShared
+    self.sharingStatus = sharingStatus
+    self.isOwner = isOwner
+    self.canBeShared = canBeShared
+    self.ownerName = ownerName
+    self.ownerEmail = ownerEmail
+    self.sharees = sharees
   }
 }
 

@@ -17,6 +17,9 @@ struct CommandRouter {
       EditCommand.spec,
       CompleteCommand.spec,
       DeleteCommand.spec,
+      ShareesCommand.spec,
+      ShareCommand.spec,
+      UnshareCommand.spec,
       StatusCommand.spec,
       AuthorizeCommand.spec,
     ]

@@ -71,7 +71,16 @@ enum ListCommand {
           let list = try await store.createList(name: name)
           if runtime.outputFormat == .json {
             OutputRenderer.printLists(
-              [ListSummary(id: list.id, title: list.title, reminderCount: 0, overdueCount: 0)],
+              [
+                ListSummary(
+                  id: list.id,
+                  title: list.title,
+                  reminderCount: 0,
+                  overdueCount: 0,
+                  isShared: list.isShared,
+                  sharingStatus: list.sharingStatus
+                )
+              ],
               format: runtime.outputFormat
             )
           } else if runtime.outputFormat == .standard {
@@ -102,7 +111,9 @@ enum ListCommand {
           id: list.id,
           title: list.title,
           reminderCount: entry.total,
-          overdueCount: entry.overdue
+          overdueCount: entry.overdue,
+          isShared: list.isShared,
+          sharingStatus: list.sharingStatus
         )
       }
 

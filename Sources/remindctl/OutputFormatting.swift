@@ -13,6 +13,31 @@ struct ListSummary: Codable, Sendable, Equatable {
   let title: String
   let reminderCount: Int
   let overdueCount: Int
+  let isShared: Bool
+  let sharingStatus: Int
+}
+
+struct ShareResult: Codable {
+  let success: Bool
+  let listName: String
+  let sharedWith: SharedWithInfo
+}
+
+struct SharedWithInfo: Codable {
+  let email: String
+  let name: String?
+  let accessLevel: String
+  let status: String
+}
+
+struct UnshareResult: Codable {
+  let success: Bool
+  let listName: String
+  let removed: RemovedInfo?
+}
+
+struct RemovedInfo: Codable {
+  let email: String?
 }
 
 struct AuthorizationSummary: Codable, Sendable, Equatable {
@@ -44,6 +69,83 @@ enum OutputRenderer {
       printJSON(summaries)
     case .quiet:
       Swift.print(summaries.count)
+    }
+  }
+
+  static func printSharingInfo(_ info: [ReminderListSharingInfo], format: OutputFormat) {
+    switch format {
+    case .standard:
+      printSharingInfoStandard(info)
+    case .plain:
+      printSharingInfoPlain(info)
+    case .json:
+      printJSON(info)
+    case .quiet:
+      break
+    }
+  }
+
+  static func printShareResult(_ result: ShareResult, format: OutputFormat) {
+    switch format {
+    case .standard:
+      Swift.print("✓ Sharing invitation sent to \(result.sharedWith.email) for \"\(result.listName)\"")
+    case .plain:
+      Swift.print("\(result.listName)\t\(result.sharedWith.email)\t\(result.sharedWith.name ?? "")\t\(result.sharedWith.accessLevel)")
+    case .json:
+      printJSON(result)
+    case .quiet:
+      break
+    }
+  }
+
+  static func printUnshareResult(_ result: UnshareResult, format: OutputFormat) {
+    switch format {
+    case .standard:
+      if let removed = result.removed, let email = removed.email {
+        Swift.print("✓ Removed \(email) from \"\(result.listName)\"")
+      } else {
+        Swift.print("✓ \"\(result.listName)\" is no longer shared")
+      }
+    case .plain:
+      Swift.print("\(result.listName)\t\(result.removed?.email ?? "all")")
+    case .json:
+      printJSON(result)
+    case .quiet:
+      break
+    }
+  }
+
+  private static func printSharingInfoStandard(_ info: [ReminderListSharingInfo]) {
+    for list in info {
+      let statusText = list.isShared ? (list.isOwner ? "shared (you own this list)" : "shared") : "not shared"
+      Swift.print("\(list.listName) — \(statusText)")
+
+      if list.isShared && !list.isOwner {
+        if let owner = list.ownerEmail {
+          Swift.print("  Owner: \(owner)")
+        }
+        Swift.print("  You are a participant")
+      } else if let sharees = list.sharees, !sharees.isEmpty {
+        for sharee in sharees {
+          let name = sharee.name ?? sharee.email ?? "Unknown"
+          let email = sharee.email != nil ? " <\(sharee.email!)>" : ""
+          Swift.print("  \(name)\(email) — \(sharee.accessLevel) (\(sharee.status))")
+        }
+      }
+    }
+  }
+
+  private static func printSharingInfoPlain(_ info: [ReminderListSharingInfo]) {
+    for list in info {
+      let shareeCount = list.sharees?.count ?? 0
+      Swift.print(
+        "\(list.listName)\t\(list.isShared ? "1" : "0")\t\(list.isOwner ? "1" : "0")\t\(list.ownerEmail ?? "")\t\(shareeCount)"
+      )
+      if let sharees = list.sharees {
+        for sharee in sharees {
+          Swift.print("\t\(sharee.email ?? "")\t\(sharee.name ?? "")\t\(sharee.accessLevel)\t\(sharee.status)")
+        }
+      }
     }
   }
 
@@ -138,7 +240,7 @@ enum OutputRenderer {
     }
   }
 
-  private static func printJSON<T: Encodable>(_ payload: T) {
+  static func printJSON<T: Encodable>(_ payload: T) {
     let encoder = JSONEncoder()
     encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
     encoder.dateEncodingStrategy = .iso8601
