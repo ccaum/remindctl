@@ -108,6 +108,12 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
   public var parentID: String?
   public var subtasks: [ReminderItem]?
   public var displayOrder: Int?
+  
+  /// Section name parsed from notes metadata (e.g., [section:Groceries])
+  public var section: String?
+  
+  /// Assignee parsed from notes metadata (e.g., [assigned:@bob])
+  public var assigned: String?
 
   public init(
     id: String,
@@ -121,7 +127,9 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
     listName: String,
     parentID: String? = nil,
     subtasks: [ReminderItem]? = nil,
-    displayOrder: Int? = nil
+    displayOrder: Int? = nil,
+    section: String? = nil,
+    assigned: String? = nil
   ) {
     self.id = id
     self.title = title
@@ -135,6 +143,17 @@ public struct ReminderItem: Identifiable, Codable, Sendable, Equatable {
     self.parentID = parentID
     self.subtasks = subtasks
     self.displayOrder = displayOrder
+    self.section = section
+    self.assigned = assigned
+  }
+  
+  /// Returns a copy with metadata fields populated from notes
+  public func withParsedMetadata() -> ReminderItem {
+    let metadata = MetadataParser.parse(from: notes)
+    var copy = self
+    copy.section = metadata.section
+    copy.assigned = metadata.assigned
+    return copy
   }
 }
 
@@ -144,13 +163,44 @@ public struct ReminderDraft: Sendable {
   public let dueDate: Date?
   public let priority: ReminderPriority
   public let parentID: String?
+  
+  /// Section name to add to notes metadata
+  public let section: String?
+  
+  /// Assignee to add to notes metadata
+  public let assigned: String?
 
-  public init(title: String, notes: String?, dueDate: Date?, priority: ReminderPriority, parentID: String? = nil) {
+  public init(
+    title: String,
+    notes: String?,
+    dueDate: Date?,
+    priority: ReminderPriority,
+    parentID: String? = nil,
+    section: String? = nil,
+    assigned: String? = nil
+  ) {
     self.title = title
     self.notes = notes
     self.dueDate = dueDate
     self.priority = priority
     self.parentID = parentID
+    self.section = section
+    self.assigned = assigned
+  }
+  
+  /// Returns notes with metadata tags included
+  public func notesWithMetadata() -> String? {
+    var result = notes
+    
+    if section != nil || assigned != nil {
+      result = MetadataParser.updateNotes(
+        result,
+        section: section.map { .some($0) },
+        assigned: assigned.map { .some($0) }
+      )
+    }
+    
+    return result?.isEmpty == true ? nil : result
   }
 }
 
@@ -161,6 +211,14 @@ public struct ReminderUpdate: Sendable {
   public let priority: ReminderPriority?
   public let listName: String?
   public let isCompleted: Bool?
+  public let parentID: String??
+  public let sectionID: String??
+  
+  /// Section name to set in notes metadata (.some(nil) to clear)
+  public let section: String??
+  
+  /// Assignee to set in notes metadata (.some(nil) to clear)
+  public let assigned: String??
 
   public init(
     title: String? = nil,
@@ -168,7 +226,11 @@ public struct ReminderUpdate: Sendable {
     dueDate: Date?? = nil,
     priority: ReminderPriority? = nil,
     listName: String? = nil,
-    isCompleted: Bool? = nil
+    isCompleted: Bool? = nil,
+    parentID: String?? = nil,
+    sectionID: String?? = nil,
+    section: String?? = nil,
+    assigned: String?? = nil
   ) {
     self.title = title
     self.notes = notes
@@ -176,5 +238,47 @@ public struct ReminderUpdate: Sendable {
     self.priority = priority
     self.listName = listName
     self.isCompleted = isCompleted
+    self.parentID = parentID
+    self.sectionID = sectionID
+    self.section = section
+    self.assigned = assigned
+  }
+}
+
+// MARK: - Section Models
+
+public struct SectionItem: Identifiable, Codable, Sendable, Equatable {
+  public let id: String
+  public let displayName: String
+  public let listID: String
+  public let listName: String
+
+  public init(id: String, displayName: String, listID: String, listName: String) {
+    self.id = id
+    self.displayName = displayName
+    self.listID = listID
+    self.listName = listName
+  }
+}
+
+public struct SectionMembership: Codable, Sendable {
+  public let memberID: String
+  public let groupID: String
+  public let modifiedOn: Double
+
+  public init(memberID: String, groupID: String, modifiedOn: Double = Date().timeIntervalSinceReferenceDate) {
+    self.memberID = memberID
+    self.groupID = groupID
+    self.modifiedOn = modifiedOn
+  }
+}
+
+public struct SectionMembershipsData: Codable, Sendable {
+  public let minimumSupportedVersion: Int
+  public var memberships: [SectionMembership]
+
+  public init(minimumSupportedVersion: Int = 20230430, memberships: [SectionMembership] = []) {
+    self.minimumSupportedVersion = minimumSupportedVersion
+    self.memberships = memberships
   }
 }

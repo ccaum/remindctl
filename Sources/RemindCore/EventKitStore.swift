@@ -291,13 +291,18 @@ public actor RemindersStore {
 
     let reminder = EKReminder(eventStore: eventStore)
     reminder.title = draft.title
-    reminder.notes = draft.notes
+    // Include metadata tags in notes
+    reminder.notes = draft.notesWithMetadata()
     reminder.calendar = calendar
     reminder.priority = draft.priority.eventKitValue
     if let dueDate = draft.dueDate {
       reminder.dueDateComponents = calendarComponents(from: dueDate)
     }
     try eventStore.save(reminder, commit: true)
+    
+    // Parse metadata for the returned item
+    let metadata = MetadataParser.parse(from: reminder.notes)
+    
     return ReminderItem(
       id: reminder.calendarItemIdentifier,
       title: reminder.title ?? "",
@@ -307,7 +312,9 @@ public actor RemindersStore {
       priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
       dueDate: date(from: reminder.dueDateComponents),
       listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
+      listName: reminder.calendar.title,
+      section: metadata.section,
+      assigned: metadata.assigned
     )
   }
 
@@ -317,9 +324,25 @@ public actor RemindersStore {
     if let title = update.title {
       reminder.title = title
     }
-    if let notes = update.notes {
-      reminder.notes = notes
+    
+    // Handle notes update with potential metadata changes
+    var updatedNotes = update.notes ?? reminder.notes
+    
+    // Apply section metadata update
+    if let sectionUpdate = update.section {
+      updatedNotes = MetadataParser.updateNotes(updatedNotes, section: sectionUpdate)
     }
+    
+    // Apply assigned metadata update
+    if let assignedUpdate = update.assigned {
+      updatedNotes = MetadataParser.updateNotes(updatedNotes, assigned: assignedUpdate)
+    }
+    
+    // Only set notes if it changed
+    if update.notes != nil || update.section != nil || update.assigned != nil {
+      reminder.notes = updatedNotes?.isEmpty == true ? nil : updatedNotes
+    }
+    
     if let dueDateUpdate = update.dueDate {
       if let dueDate = dueDateUpdate {
         reminder.dueDateComponents = calendarComponents(from: dueDate)
@@ -339,6 +362,24 @@ public actor RemindersStore {
 
     try eventStore.save(reminder, commit: true)
 
+    // Handle parentID update via ReminderKit (requires separate API call)
+    if let parentIDUpdate = update.parentID {
+      try await updateReminderParent(id: reminder.calendarItemIdentifier, parentID: parentIDUpdate)
+    }
+
+    // Handle sectionID update via ReminderKit (requires separate API call)
+    if let sectionIDUpdate = update.sectionID {
+      try await moveReminderToSection(reminderID: reminder.calendarItemIdentifier, sectionID: sectionIDUpdate)
+    }
+
+    // Fetch subtask info to include parentID in the returned item
+    let subtaskStore = SubtaskStore()
+    let subtaskInfo = subtaskStore.fetchSubtaskInfo()
+    let currentParentID = subtaskInfo[reminder.calendarItemIdentifier]?.parentID
+    
+    // Parse metadata for the returned item
+    let metadata = MetadataParser.parse(from: reminder.notes)
+
     return ReminderItem(
       id: reminder.calendarItemIdentifier,
       title: reminder.title ?? "",
@@ -348,7 +389,10 @@ public actor RemindersStore {
       priority: ReminderPriority(eventKitValue: Int(reminder.priority)),
       dueDate: date(from: reminder.dueDateComponents),
       listID: reminder.calendar.calendarIdentifier,
-      listName: reminder.calendar.title
+      listName: reminder.calendar.title,
+      parentID: currentParentID,
+      section: metadata.section,
+      assigned: metadata.assigned
     )
   }
 
@@ -431,7 +475,8 @@ public actor RemindersStore {
     }
 
     return reminderData.map { data in
-      ReminderItem(
+      let metadata = MetadataParser.parse(from: data.notes)
+      return ReminderItem(
         id: data.id,
         title: data.title,
         notes: data.notes,
@@ -440,7 +485,9 @@ public actor RemindersStore {
         priority: ReminderPriority(eventKitValue: data.priority),
         dueDate: date(from: data.dueDateComponents),
         listID: data.listID,
-        listName: data.listName
+        listName: data.listName,
+        section: metadata.section,
+        assigned: metadata.assigned
       )
     }
   }

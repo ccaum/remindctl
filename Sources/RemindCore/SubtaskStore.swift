@@ -45,7 +45,8 @@ public final class SubtaskStore {
                 var statement: OpaquePointer?
                 if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
                     while sqlite3_step(statement) == SQLITE_ROW {
-                        let id = String(cString: sqlite3_column_text(statement, 0))
+                        guard let idPtr = sqlite3_column_text(statement, 0) else { continue }
+                        let id = String(cString: idPtr)
                         let parentID = sqlite3_column_text(statement, 1).map { String(cString: $0) }
                         let order = Int(sqlite3_column_int(statement, 2))
                         
@@ -72,7 +73,8 @@ public final class SubtaskStore {
                 var statement: OpaquePointer?
                 if sqlite3_prepare_v2(db, query, -1, &statement, nil) == SQLITE_OK {
                     while sqlite3_step(statement) == SQLITE_ROW {
-                        let id = String(cString: sqlite3_column_text(statement, 0))
+                        guard let idPtr = sqlite3_column_text(statement, 0) else { continue }
+                        let id = String(cString: idPtr)
                         let status = Int(sqlite3_column_int(statement, 1))
                         results[id] = ListSharingInfo(isShared: status != 0, sharingStatus: status)
                     }

@@ -153,7 +153,15 @@ enum OutputRenderer {
     switch format {
     case .standard:
       let due = reminder.dueDate.map { DateParsing.formatDisplay($0) } ?? "no due date"
-      Swift.print("✓ \(reminder.title) [\(reminder.listName)] — \(due)")
+      var extras: [String] = []
+      if let section = reminder.section {
+        extras.append("section:\(section)")
+      }
+      if let assigned = reminder.assigned {
+        extras.append(assigned)
+      }
+      let extraStr = extras.isEmpty ? "" : " {\(extras.joined(separator: ", "))}"
+      Swift.print("✓ \(reminder.title) [\(reminder.listName)] — \(due)\(extraStr)")
     case .plain:
       Swift.print(plainLine(for: reminder))
     case .json:
@@ -205,7 +213,17 @@ enum OutputRenderer {
       let padding = String(repeating: " ", count: indent)
       let listPart = indent == 0 ? " [\(item.listName)]" : ""
       
-      Swift.print("\(padding)[\(index)] [\(status)] \(item.title)\(listPart) — \(due)\(priority)")
+      // Add section and assigned metadata hints
+      var extras: [String] = []
+      if let section = item.section {
+        extras.append("§\(section)")
+      }
+      if let assigned = item.assigned {
+        extras.append(assigned)
+      }
+      let extraStr = extras.isEmpty ? "" : " {\(extras.joined(separator: ", "))}"
+      
+      Swift.print("\(padding)[\(index)] [\(status)] \(item.title)\(listPart) — \(due)\(priority)\(extraStr)")
       index += 1
       
       if let subtasks = item.subtasks {
@@ -244,6 +262,8 @@ enum OutputRenderer {
       reminder.priority.rawValue,
       due,
       reminder.parentID ?? "",
+      reminder.section ?? "",
+      reminder.assigned ?? "",
       reminder.title,
     ].joined(separator: "\t")
   }

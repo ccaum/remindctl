@@ -25,6 +25,8 @@ enum AddCommand {
               parsing: .singleValue
             ),
             .make(label: "parent", names: [.long("parent")], help: "Parent reminder ID", parsing: .singleValue),
+            .make(label: "section", names: [.short("s"), .long("section")], help: "Section name (metadata tag)", parsing: .singleValue),
+            .make(label: "assign", names: [.short("a"), .long("assign")], help: "Assignee (e.g., @bob)", parsing: .singleValue),
           ]
         )
       ),
@@ -32,6 +34,8 @@ enum AddCommand {
         "remindctl add \"Buy milk\"",
         "remindctl add --title \"Call mom\" --list Personal --due tomorrow",
         "remindctl add \"Review docs\" --priority high",
+        "remindctl add \"Buy groceries\" --section Groceries",
+        "remindctl add \"Review PR\" --assign @bob",
       ]
     ) { values, runtime in
       let titleOption = values.option("title")
@@ -58,6 +62,8 @@ enum AddCommand {
       let dueValue = values.option("due")
       let priorityValue = values.option("priority")
       let parentID = values.option("parent")
+      let section = values.option("section")
+      let assign = values.option("assign")
 
       let dueDate = try dueValue.map(CommandHelpers.parseDueDate)
       let priority = try priorityValue.map(CommandHelpers.parsePriority) ?? .none
@@ -75,7 +81,15 @@ enum AddCommand {
         throw RemindCoreError.operationFailed("No default list found. Specify --list.")
       }
 
-      let draft = ReminderDraft(title: title, notes: notes, dueDate: dueDate, priority: priority, parentID: parentID)
+      let draft = ReminderDraft(
+        title: title,
+        notes: notes,
+        dueDate: dueDate,
+        priority: priority,
+        parentID: parentID,
+        section: section,
+        assigned: assign
+      )
       let reminder = try await store.createReminder(draft, listName: targetList)
       OutputRenderer.printReminder(reminder, format: runtime.outputFormat)
     }
