@@ -2,89 +2,114 @@
 
 ## Overview
 
-The `remindctl add` command allows you to create reminders in specific lists and target them for specific sections. Due to macOS limitations, full automatic section assignment is not currently supported, but the tool provides a practical workaround.
+The `remindctl add` command allows you to create reminders in specific lists and **directly assign them to sections**. Section assignment is now fully supported!
+
+## ✅ Section Assignment Works!
+
+Reminders created with `--section` will automatically appear under the specified section in Reminders.app. No manual dragging required.
 
 ## Usage
 
 ### Add reminder to a list
 
 ```bash
-python3 -m remindctl add "My Reminder" --list "To-do"
-python3 -m remindctl add "My Reminder" --list-id "7CB210F3-A578-477E-8CF0-0960B297836A"
-```
-
-### Add reminder targeting a section
-
-```bash
-python3 -m remindctl add "My Reminder" --section "Misc"
-python3 -m remindctl add "My Reminder" --section-id "EC2FA675-4B05-4022-A22C-2DB61D827B8A"
-```
-
-When targeting a section:
-1. The reminder is created in the section's parent list
-2. A note marker `[Section: <name>]` is added to the reminder's notes
-3. The output provides instructions for manual section assignment
-
-### Direct Swift binary usage
-
-```bash
 ./reminderctl add "My Reminder" --list "To-do"
-./reminderctl add "My Reminder" --section "Misc"
+./reminderctl add "My Reminder" --list-id "7CB210F3-A578-477E-8CF0-0960B297836A"
 ```
 
-## Available Sections
-
-To see available sections:
+### Add reminder to a section (RECOMMENDED)
 
 ```bash
-./sectionctl list
-# or
-python3 -m remindctl section list
+# By section name
+./reminderctl add "My Task" --section "Misc"
+./reminderctl add "Workout reminder" --section "Fitness App"
+
+# By section UUID
+./reminderctl add "My Task" --section "EC2FA675-4B05-4022-A22C-2DB61D827B8A"
 ```
 
-## Technical Limitations
+When using `--section`:
+1. The reminder is automatically created in the section's parent list
+2. The reminder is automatically assigned to the specified section
+3. The reminder appears **immediately** under that section in Reminders.app GUI
 
-### Why automatic section assignment doesn't work
+### Add reminder with notes
 
-Apple's ReminderKit framework stores section memberships in a special data structure (`ZMEMBERSHIPSOFREMINDERSINSECTIONSASDATA`) on the list itself. While the private API provides methods to modify this:
+```bash
+./reminderctl add "My Task" --section "Misc" --notes "This is my note"
+```
 
-- `REMListSectionContextChangeItem.setUnsavedMembershipsOfRemindersInSections:`
+## Available Commands
 
-Attempts to use these methods consistently crash the `remindd` daemon with error:
-- **Error Code**: 4099 (NSXPCConnectionInterrupted)
-- **Description**: "Couldn't communicate with a helper application"
+```bash
+./reminderctl add <title> --list <listID|listName>       # Create in list
+./reminderctl add <title> --section <sectionID|name>     # Create in section ✅
+./reminderctl lists                                       # Show available lists
+./reminderctl sections [listID|listName]                  # Show sections
+```
 
-This appears to be either:
-1. A deliberate security measure in macOS
-2. Additional undocumented requirements for using this API
-3. A bug in the current macOS version
+## Examples
 
-### Workaround
+```bash
+# Create reminder in "Misc" section
+./reminderctl add "Buy groceries" --section "Misc"
 
-The tool creates reminders in the correct list and adds a note marker (`[Section: <name>]`) to help with manual organization. Users can then:
+# Create reminder in "Fitness App" section with notes
+./reminderctl add "Morning workout" --section "Fitness App" --notes "Start with stretching"
 
-1. Open Reminders.app
-2. Navigate to the target list and section
-3. Drag the reminder into the appropriate section
+# List all sections in "Silas Projects"
+./reminderctl sections "Silas Projects"
+```
 
-### What works
+## Technical Details
 
-- ✅ Creating reminders in lists
-- ✅ Creating sections
-- ✅ Managing section metadata (rename, delete)
-- ✅ Listing sections
-- ✅ Adding notes to reminders
-- ✅ Creating subtasks (via `subtaskctl`)
+### How Section Assignment Works
 
-### What doesn't work
+Section assignment uses Apple's private `ReminderKit.framework` with the following key classes:
 
-- ❌ Automatic section assignment during reminder creation
-- ❌ Moving existing reminders to sections programmatically
+1. **REMMembership** - Represents a reminder-to-section relationship
+   - `memberIdentifier`: The reminder's UUID
+   - `groupIdentifier`: The section's UUID  
+   - `modifiedOn`: Timestamp
+
+2. **REMMemberships** - A container for membership objects (critical!)
+   - Using `NSSet` directly **crashes** `remindd`
+   - The `REMMemberships` wrapper class is required for stable operation
+
+3. **REMListSectionContextChangeItem** - Manages section memberships
+   - `setUnsavedMembershipsOfRemindersInSections:` sets the membership data
+
+### Key Discovery
+
+The critical insight that made section assignment work was discovering that `setUnsavedMembershipsOfRemindersInSections:` expects an `REMMemberships` object, not a plain `NSSet`. The property type in the Objective-C runtime shows `@property unsavedMembershipsOfRemindersInSections [T@"REMMemberships",&,N]`.
+
+### Database Storage
+
+Section memberships are stored in the `ZMEMBERSHIPSOFREMINDERSINSECTIONSASDATA` column of `ZREMCDBASELIST` as JSON:
+
+```json
+{
+  "minimumSupportedVersion": 20230430,
+  "memberships": [
+    {
+      "memberID": "REMINDER-UUID",
+      "groupID": "SECTION-UUID",
+      "modifiedOn": 792712734.564943
+    }
+  ]
+}
+```
+
+## Requirements
+
+- macOS with iCloud-synced Reminders lists
+- Full disk access for the executable
+- Reminders app permission granted
 
 ## Files
 
-- `reminderctl.swift` - Swift binary for reminder creation with section targeting
-- `remindctl/commands/add.py` - Python CLI wrapper
+- `reminderctl` - Compiled binary
+- `reminderctl.swift` - Swift source with working section assignment
 - `sectionctl.swift` - Section CRUD operations (create, list, update, delete)
 
 ## Compilation
@@ -94,6 +119,16 @@ cd /path/to/remindctl
 swiftc -o reminderctl reminderctl.swift -framework Foundation -framework Cocoa -framework EventKit -lsqlite3 -O
 ```
 
-## Future Work
+## Verification
 
-If Apple provides public APIs for section management, or if the private API behavior changes, this tool can be updated to support automatic section assignment. The infrastructure for tracking memberships is already in place.
+After creating a reminder with `--section`, you can verify the assignment:
+
+1. Open Reminders.app
+2. Navigate to the specified list
+3. Expand the section - your reminder should be there
+
+Or use the database verification:
+
+```bash
+./verify_section  # Shows all section memberships
+```
