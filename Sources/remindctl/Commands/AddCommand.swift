@@ -24,6 +24,7 @@ enum AddCommand {
               help: "none|low|medium|high",
               parsing: .singleValue
             ),
+            .make(label: "parent", names: [.long("parent")], help: "Parent reminder ID", parsing: .singleValue),
           ]
         )
       ),
@@ -56,6 +57,7 @@ enum AddCommand {
       let notes = values.option("notes")
       let dueValue = values.option("due")
       let priorityValue = values.option("priority")
+      let parentID = values.option("parent")
 
       let dueDate = try dueValue.map(CommandHelpers.parseDueDate)
       let priority = try priorityValue.map(CommandHelpers.parsePriority) ?? .none
@@ -73,7 +75,7 @@ enum AddCommand {
         throw RemindCoreError.operationFailed("No default list found. Specify --list.")
       }
 
-      let draft = ReminderDraft(title: title, notes: notes, dueDate: dueDate, priority: priority)
+      let draft = ReminderDraft(title: title, notes: notes, dueDate: dueDate, priority: priority, parentID: parentID)
       let reminder = try await store.createReminder(draft, listName: targetList)
       OutputRenderer.printReminder(reminder, format: runtime.outputFormat)
     }

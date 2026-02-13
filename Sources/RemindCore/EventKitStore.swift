@@ -284,6 +284,11 @@ public actor RemindersStore {
 
   public func createReminder(_ draft: ReminderDraft, listName: String) async throws -> ReminderItem {
     let calendar = try calendar(named: listName)
+    
+    if let parentID = draft.parentID {
+        return try await createSubtask(draft, listName: listName, parentID: parentID)
+    }
+
     let reminder = EKReminder(eventStore: eventStore)
     reminder.title = draft.title
     reminder.notes = draft.notes

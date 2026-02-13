@@ -143,12 +143,14 @@ public struct ReminderDraft: Sendable {
   public let notes: String?
   public let dueDate: Date?
   public let priority: ReminderPriority
+  public let parentID: String?
 
-  public init(title: String, notes: String?, dueDate: Date?, priority: ReminderPriority) {
+  public init(title: String, notes: String?, dueDate: Date?, priority: ReminderPriority, parentID: String? = nil) {
     self.title = title
     self.notes = notes
     self.dueDate = dueDate
     self.priority = priority
+    self.parentID = parentID
   }
 }
 
