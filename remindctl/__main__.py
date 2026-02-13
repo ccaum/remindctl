@@ -6,6 +6,7 @@ import sys
 
 from remindctl.commands.subtask import subtask_parser
 from remindctl.commands.section import section_parser
+from remindctl.commands.add import add_parser
 
 
 def main():
@@ -27,6 +28,7 @@ def main():
     )
     
     # Register command parsers
+    add_parser(subparsers)
     subtask_parser(subparsers)
     section_parser(subparsers)
     
