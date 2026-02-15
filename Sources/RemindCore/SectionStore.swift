@@ -404,6 +404,7 @@ extension RemindersStore {
     }
     
     /// Move a reminder to a section within the same list.
+    /// Uses REMMemberships wrapper class for proper section assignment (matches working reminderctl.swift pattern).
     ///
     /// - Parameters:
     ///   - reminderID: The ID of the reminder to move
@@ -421,12 +422,24 @@ extension RemindersStore {
             throw RemindCoreError.operationFailed("REMSaveRequest class not found")
         }
         
+        guard let listClass = NSClassFromString("REMList") as? NSObject.Type else {
+            throw RemindCoreError.operationFailed("REMList class not found")
+        }
+        
+        guard let membershipClass = NSClassFromString("REMMembership") as? NSObject.Type else {
+            throw RemindCoreError.operationFailed("REMMembership class not found")
+        }
+        
+        guard let membershipsClass = NSClassFromString("REMMemberships") as? NSObject.Type else {
+            throw RemindCoreError.operationFailed("REMMemberships class not found")
+        }
+        
         // Get the reminder to find its list
         let ekReminder = try reminder(withID: reminderID)
         let listID = ekReminder.calendar.calendarIdentifier
         
-        guard let objectIDClass = NSClassFromString("REMObjectID") as? NSObject.Type else {
-            throw RemindCoreError.operationFailed("REMObjectID class not found")
+        guard let listUUID = NSUUID(uuidString: listID) else {
+            throw RemindCoreError.operationFailed("Invalid list ID format: \(listID)")
         }
         
         // 1. Create REMStore
@@ -436,17 +449,13 @@ extension RemindersStore {
             _ = store.perform(initSel, with: NSNumber(value: true))
         }
         
-        // 2. Create list ObjectID from UUID string and entity name
-        guard let listUUID = NSUUID(uuidString: listID) else {
-            throw RemindCoreError.operationFailed("Invalid list ID format: \(listID)")
+        // 2. Create list ObjectID using REMList.objectIDWithUUID: (simpler, single-argument version)
+        let objectIDWithUUIDSel = NSSelectorFromString("objectIDWithUUID:")
+        guard (listClass as AnyObject).responds(to: objectIDWithUUIDSel) else {
+            throw RemindCoreError.operationFailed("REMList does not respond to objectIDWithUUID:")
         }
         
-        let objectIDFromUUIDSel = NSSelectorFromString("objectIDWithUUID:entityName:")
-        guard (objectIDClass as AnyObject).responds(to: objectIDFromUUIDSel) else {
-            throw RemindCoreError.operationFailed("REMObjectID does not respond to objectIDWithUUID:entityName:")
-        }
-        
-        guard let listObjectID = (objectIDClass as AnyObject).perform(objectIDFromUUIDSel, with: listUUID, with: "REMCDList" as NSString)?.takeUnretainedValue() as? NSObject else {
+        guard let listObjectID = (listClass as AnyObject).perform(objectIDWithUUIDSel, with: listUUID)?.takeUnretainedValue() as? NSObject else {
             throw RemindCoreError.operationFailed("Failed to create list object ID")
         }
         
@@ -464,51 +473,45 @@ extension RemindersStore {
             throw RemindCoreError.operationFailed("Failed to fetch list: \(errorMsg)")
         }
         
-        // 3. Create REMSaveRequest
+        // 4. Create REMSaveRequest
         let saveRequest = saveRequestClass.init()
         let initWithStoreSel = NSSelectorFromString("initWithStore:")
         if saveRequest.responds(to: initWithStoreSel) {
             _ = saveRequest.perform(initWithStoreSel, with: store)
         }
         
-        // 4. Get the list change item
+        // 5. Get the list change item
         let updateListSel = NSSelectorFromString("updateList:")
         guard saveRequest.responds(to: updateListSel),
               let listChangeItem = saveRequest.perform(updateListSel, with: remList)?.takeUnretainedValue() as? NSObject else {
             throw RemindCoreError.operationFailed("Failed to get list change item")
         }
         
-        // 5. Get the sections context change item
+        // 6. Get the sections context change item
         let sectionsContextSel = NSSelectorFromString("sectionsContextChangeItem")
         guard listChangeItem.responds(to: sectionsContextSel),
               let sectionsContext = listChangeItem.perform(sectionsContextSel)?.takeUnretainedValue() as? NSObject else {
             throw RemindCoreError.operationFailed("Failed to get sections context")
         }
         
-        // 6. Create REMMembership objects for the section assignment
-        guard let membershipClass = NSClassFromString("REMMembership") as? NSObject.Type else {
-            throw RemindCoreError.operationFailed("REMMembership class not found")
-        }
-        
-        // Get current memberships from database
+        // 7. Get current memberships from database and create membership objects
         let sectionStore = SectionStore()
         let existingMemberships = sectionStore.fetchSectionMemberships(forListID: listID)
         
-        // Create membership objects using IMP calling convention for 4-argument init
         var membershipObjects: [NSObject] = []
         let initMembershipSel = NSSelectorFromString("initWithMemberIdentifier:groupIdentifier:isObsolete:modifiedOn:")
         
-        typealias MembershipInitIMP = @convention(c) (AnyObject, Selector, NSUUID, NSUUID, Bool, NSDate) -> AnyObject?
+        typealias MembershipInitIMP = @convention(c) (AnyObject, Selector, AnyObject, AnyObject, Bool, AnyObject) -> AnyObject?
         
         // Add existing memberships (excluding the one we're updating)
         for (memID, grpID) in existingMemberships where memID != reminderID {
             guard let memUUID = NSUUID(uuidString: memID),
                   let grpUUID = NSUUID(uuidString: grpID) else { continue }
             
-            let membership = membershipClass.init()
+            let membershipInstance = membershipClass.init()
             if let method = class_getInstanceMethod(membershipClass, initMembershipSel) {
                 let imp = unsafeBitCast(method_getImplementation(method), to: MembershipInitIMP.self)
-                if let result = imp(membership, initMembershipSel, memUUID, grpUUID, false, NSDate()) as? NSObject {
+                if let result = imp(membershipInstance, initMembershipSel, memUUID, grpUUID, false, NSDate()) as? NSObject {
                     membershipObjects.append(result)
                 }
             }
@@ -521,30 +524,33 @@ extension RemindersStore {
                 throw RemindCoreError.operationFailed("Invalid reminder or section ID format")
             }
             
-            let newMembership = membershipClass.init()
+            let membershipInstance = membershipClass.init()
             if let method = class_getInstanceMethod(membershipClass, initMembershipSel) {
                 let imp = unsafeBitCast(method_getImplementation(method), to: MembershipInitIMP.self)
-                if let result = imp(newMembership, initMembershipSel, memUUID, grpUUID, false, NSDate()) as? NSObject {
+                if let result = imp(membershipInstance, initMembershipSel, memUUID, grpUUID, false, NSDate()) as? NSObject {
                     membershipObjects.append(result)
                 }
             }
         }
         
-        // 7. Set memberships on context as an NSSet
-        let membershipSet = NSSet(array: membershipObjects)
+        // 8. Create REMMemberships wrapper object (KEY: use this wrapper class, not plain NSSet)
+        let membershipsSet = NSSet(array: membershipObjects)
+        let initWithMembershipsSel = NSSelectorFromString("initWithMemberships:")
+        
+        let membershipsInstance = membershipsClass.init()
+        guard membershipsInstance.responds(to: initWithMembershipsSel),
+              let memberships = membershipsInstance.perform(initWithMembershipsSel, with: membershipsSet)?.takeUnretainedValue() as? NSObject else {
+            throw RemindCoreError.operationFailed("Failed to create REMMemberships object")
+        }
+        
+        // 9. Set the unsaved memberships using the wrapper object
         let setMembershipsSel = NSSelectorFromString("setUnsavedMembershipsOfRemindersInSections:")
         guard sectionsContext.responds(to: setMembershipsSel) else {
             throw RemindCoreError.operationFailed("Sections context does not respond to setUnsavedMembershipsOfRemindersInSections:")
         }
-        _ = sectionsContext.perform(setMembershipsSel, with: membershipSet)
+        _ = sectionsContext.perform(setMembershipsSel, with: memberships)
         
-        // 8. Set the update flag
-        let setUpdateFlagSel = NSSelectorFromString("setShouldUpdateSectionsOrdering:")
-        if sectionsContext.responds(to: setUpdateFlagSel) {
-            _ = sectionsContext.perform(setUpdateFlagSel, with: NSNumber(value: true))
-        }
-        
-        // 9. Save
+        // 10. Save
         let saveSel = NSSelectorFromString("saveSynchronouslyWithError:")
         typealias SaveIMP = @convention(c) (AnyObject, Selector, UnsafeMutablePointer<NSError?>) -> Bool
         guard let saveMethod = class_getInstanceMethod(type(of: saveRequest), saveSel) else {
